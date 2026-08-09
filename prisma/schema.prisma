@@ -1,0 +1,22 @@
+// This is an example schema for the boilerplate.
+// Edit or replace models freely for whatever POC you're building.
+// If you don't need a database yet, you can ignore/delete this whole folder
+// and the prisma-related config/db.js code.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      String   @default("user")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
