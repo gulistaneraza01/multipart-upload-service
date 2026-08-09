@@ -27,6 +27,22 @@ const router = Router();
  *     responses:
  *       200:
  *         description: Multipart upload initiated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [success, data]
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   required: [uploadId, key]
+ *                   properties:
+ *                     uploadId:
+ *                       type: string
+ *                     key:
+ *                       type: string
  *       400:
  *         description: Validation error
  */

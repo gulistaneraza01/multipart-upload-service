@@ -4,8 +4,8 @@ import { logger } from '../utils/logger.js';
 export const initiateUpload = async (req, res) => {
   const { contentType, fileName } = req.body;
 
-  const uploadId = await createInitialUploadId(fileName, contentType);
+  const data = await createInitialUploadId(fileName, contentType);
 
-  logger.info({ uploadId, fileName, contentType });
-  res.status(200).json({ success: true, data: uploadId });
+  logger.info({ event: 'multipart_upload_initiated', key: data.key });
+  res.status(200).json({ success: true, data });
 };
