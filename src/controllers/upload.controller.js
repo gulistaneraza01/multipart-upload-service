@@ -1,14 +1,11 @@
+import { createInitialUploadId } from '../services/upload.service.js';
+import { logger } from '../utils/logger.js';
+
 export const initiateUpload = async (req, res) => {
   const { contentType, fileName } = req.body;
 
-  const { uploadId } = await s3Client.send(
-    new CreateMultipartUploadCommand({
-      Bucket: process.env.S3_BUCKET,
-      Key: fileName,
-      ContentType: contentType,
-    }),
-  );
+  const uploadId = await createInitialUploadId(fileName, contentType);
 
-  console.log(uploadId);
-  res.status(200).json({ uploadId });
+  logger.info({ uploadId, fileName, contentType });
+  res.status(200).json({ success: true, data: uploadId });
 };
