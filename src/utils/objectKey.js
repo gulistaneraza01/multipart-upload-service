@@ -22,8 +22,8 @@ export function sanitizeFileName(name) {
     .replace(/[\x00-\x1f\x7f]/g, '')
     .replace(/[/\\]/g, '')
     .replace(/\.\.+/g, '')
+    .replace(/^[.\s]+|[.\s]+$/g, '')
     .replace(/\s+/g, '_')
-    .replace(/^[.\s_]+|[.\s_]+$/g, '')
     .slice(0, MAX_NAME_LENGTH);
 }
 

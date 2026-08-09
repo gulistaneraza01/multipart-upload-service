@@ -6,6 +6,6 @@ export const initiateUpload = async (req, res) => {
 
   const data = await createInitialUploadId(fileName, contentType);
 
-  logger.info({ event: 'multipart_upload_initiated', key: data.key });
+  logger.info({ event: 'multipart_upload_initiated', uploadId: data.uploadId });
   res.status(200).json({ success: true, data });
 };
