@@ -1,37 +1,29 @@
-# JS ES6 Backend Boilerplate
+# S3 Multipart Upload Backend
 
-A reusable Node.js + Express (ES6 modules) backend structure for quick prototypes. Follows a layered architecture: `routes → middleware → controllers (thin) → services (business logic) → Prisma`.
+A small Node.js + Express 5 (ESM) backend that brokers **multipart uploads to S3**. Built on a layered architecture (`routes → middleware → controllers → services`) with Zod validation, JWT auth, and an optional Prisma/Postgres layer.
 
-## Folder structure
+The current endpoint set is intentionally minimal: user register/login (JWT), a single `POST /upload/initiate-upload` that creates an S3 multipart upload and returns a unique, owner-safe key, and a few health/docs routes.
 
-```
-src/
-├── config/          # env vars, db connection, swagger spec
-├── controllers/     # req/res handling only — stays thin
-├── services/        # business logic lives here
-├── repositories/     # (empty scaffold) add only if you start unit testing
-├── routes/          # route definitions with @openapi comments, mounted in routes/index.js
-├── middleware/       # auth, error handling, validation
-├── validators/       # zod schemas for request validation
-├── utils/            # AppError, logger, asyncHandler, checkDatabase
-├── app.js            # express app setup
-└── server.js         # entry point
+## Stack
 
-prisma/
-├── schema.prisma     # example User model — edit freely
-└── seed.js           # example seed script
-```
+- **Runtime:** Node.js 20+, ESM (`"type": "module"`).
+- **HTTP:** Express 5.
+- **AWS:** `@aws-sdk/client-s3` v3, `@aws-sdk/s3-request-presigner`.
+- **Validation:** Zod.
+- **Auth:** JWT (`jsonwebtoken`) + `bcrypt`.
+- **DB (optional):** Prisma 7 + PostgreSQL via `@prisma/adapter-pg`.
+- **Docs:** swagger-jsdoc + `@scalar/express-api-reference`.
+- **Package manager:** pnpm 9.12 (pinned via `packageManager`).
+
+## Prerequisites
+
+- Node.js 20+ and pnpm 9.12 (`corepack enable` is enough — `packageManager` is pinned).
+- An AWS account with an S3 bucket and an IAM user that has `s3:PutObject`, `s3:GetObject`, `s3:AbortMultipartUpload`, and `s3:ListMultipartUploadParts` on that bucket.
+- (Optional) PostgreSQL if you intend to use the Prisma layer.
 
 ## Quick start
 
 ```bash
-# Clone the repo
-git clone https://github.com/gulistaneraza01/js-boilerplate.git .
-
-# (Alternative) Reset remote to your own repo:
-git remote remove origin
-git remote add origin YOUR_REPO_URL
-
 # 1. Install dependencies
 pnpm install
 
@@ -41,48 +33,98 @@ cp .env.example .env
 # 3. (Optional) If using Prisma/Postgres:
 pnpm prisma:generate
 pnpm prisma:migrate
-pnpm exec node prisma/seed.js
 
-# 4. Run dev server
+# 4. Run the dev server (auto-reload)
 pnpm dev
 ```
 
-> Requires pnpm installed globally: `npm install -g pnpm` (or `corepack enable` on Node 16.13+, since `packageManager` is already pinned in `package.json`).
+Server runs at `http://localhost:3000/api/v1`.
 
-Server runs at `http://localhost:3000/api/v1` by default.
+### Required environment variables
 
-- `GET  /api/v1/health` — liveness probe (always returns 200)
-- `GET  /api/v1/ready` — readiness probe (checks database connection)
-- `GET  /api/v1/docs` — interactive API reference (Scalar)
-- `GET  /api/v1/openapi.json` — raw OpenAPI spec
-- `POST /api/v1/users/register`
-- `POST /api/v1/users/login`
-- `GET  /api/v1/users/me` — requires `Authorization: Bearer <token>`
-- `GET  /api/v1/users` — admin only (example of `authorize()` role guard)
+| Var | Purpose |
+|---|---|
+| `S3_REGION` | Bucket region (e.g. `ap-south-1`). |
+| `S3_BUCKET` | Bucket name. |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | IAM credentials. |
+| `JWT_SECRET` | Long random string for signing tokens. |
+| `PORT` | Optional. Defaults to `3000`. |
+| `CLIENT_URL` | Optional. Defaults to `http://localhost:5173`. |
+| `DATABASE_URL` | Optional. Only needed if you enable Prisma. |
 
-## Don't need a database for this POC?
+## Architecture
 
-Delete `prisma/`, `src/config/db.js`, and anything importing it. The rest of the structure (routes/controllers/services/middleware) works standalone.
+```
+src/
+├── config/        # env loading, S3 client, swagger spec
+├── controllers/   # thin req/res wrappers — parse, call service, format
+├── services/      # business logic (S3 calls, Prisma calls)
+├── repositories/  # (empty scaffold — add only when unit tests need a DB mock seam)
+├── routes/        # route definitions + @openapi JSDoc, mounted in routes/index.js
+├── middleware/    # auth, validation, error handler
+├── validators/    # zod schemas for request bodies
+├── utils/         # AppError, asyncHandler, logger, objectKey
+├── app.js         # express app setup (middleware wiring)
+└── server.js      # entry point + graceful shutdown
+```
 
-## Adding a new feature (e.g. "posts")
+The layered structure is intentional: routes own HTTP wiring, controllers stay thin, services own business logic. Don't add a `repositories/` layer until you're writing unit tests that need to mock the DB.
 
-1. `validators/post.validator.js` — zod schema for request body
-2. `services/post.service.js` — business logic + Prisma calls
-3. `controllers/post.controller.js` — thin req/res wrapper calling the service
-4. `routes/post.routes.js` — define endpoints, wire up middleware
-5. Mount it in `routes/index.js`: `router.use('/posts', postRoutes);`
+## API endpoints
 
-## When to add `repositories/`
+Base URL: `http://localhost:3000/api/v1`
 
-Skip it until you're actually writing unit tests for a service, or a query is duplicated across multiple services. Then wrap the Prisma calls behind an interface so you can mock the DB layer in tests. See the empty `repositories/` folder as a placeholder for when that day comes.
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| `GET` | `/health` | none | Liveness probe. |
+| `GET` | `/ready` | none | Readiness probe (checks DB if configured). |
+| `GET` | `/docs` | none | Scalar UI for the live OpenAPI spec. |
+| `GET` | `/openapi.json` | none | Raw OpenAPI 3.1 spec. |
+| `POST` | `/users/register` | none | Create a user. |
+| `POST` | `/users/login` | none | Returns a JWT. |
+| `GET` | `/users/me` | Bearer | Current user profile. |
+| `GET` | `/users` | Bearer + admin | List all users. |
+| `POST` | `/upload/initiate-upload` | none | Start a multipart upload. |
 
-## What's included
+## Initiating a multipart upload
 
-- Express + ES6 modules (`type: module` in package.json)
-- Centralized error handling (`AppError` + `error.middleware.js`)
-- JWT auth (`auth.middleware.js` — `protect` + `authorize(...roles)`)
-- Zod request validation (`validate.middleware.js`)
-- `asyncHandler` so you never write try/catch in a controller again (optional with Express 5 — kept for clarity)
-- Prisma ORM v7 pre-wired with driver adapter (swap for raw `pg` if you prefer)
-- helmet, cors, morgan for basic production hygiene
-- Graceful shutdown handling in `server.js`
+```bash
+curl -X POST http://localhost:3000/api/v1/upload/initiate-upload \
+  -H 'Content-Type: application/json' \
+  -d '{"fileName":"testvideo.mp4","contentType":"video/mp4"}'
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "uploadId": "example-upload-id-from-s3",
+    "key": "7c1f4a2e-9b3d-4a1f-8e2c-1a2b3c4d5e6f-testvideo.mp4"
+  }
+}
+```
+
+The `key` is generated by `src/utils/objectKey.js`:
+
+- A fresh UUID v4 prefix guarantees uniqueness — no two clients collide even if they upload files with the same name.
+- The original filename is sanitized (path separators, control characters, traversal sequences, leading dots) and appended for human readability in the S3 console.
+
+Use the returned `key` (not the original `fileName`) on all subsequent part-upload, complete-multipart-upload, and abort-multipart-upload calls.
+
+## Adding a new feature
+
+1. `validators/<feature>.validator.js` — zod schema for the request body.
+2. `services/<feature>.service.js` — business logic + AWS / Prisma calls.
+3. `controllers/<feature>.controller.js` — thin req/res wrapper calling the service.
+4. `routes/<feature>.routes.js` — define endpoints, wire up middleware, add `@openapi` JSDoc.
+5. Mount it in `routes/index.js`.
+
+## When you don't need a database
+
+Delete `prisma/`, `src/config/db.js`, and any imports of it. The rest of the structure (routes, controllers, services, middleware) works standalone — the readiness probe will simply skip the DB check.
+
+## License
+
+MIT. POC code — use at your own risk.
