@@ -16,8 +16,9 @@ export const createInitialUploadId = async (
   fileName,
   contentType,
   fileSize,
+  folderPath = '',
 ) => {
-  const key = buildObjectKey(fileName);
+  const key = buildObjectKey(fileName, folderPath);
 
   const command = new CreateMultipartUploadCommand({
     Bucket: env.s3Bucket,

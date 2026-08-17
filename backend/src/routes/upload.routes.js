@@ -41,10 +41,14 @@ const router = Router();
  *                 minimum: 1
  *                 maximum: 5368709120
  *                 description: Size of the file in bytes (max 5GB)
+ *               folderPath:
+ *                 type: string
+ *                 description: Optional relative folder path (e.g. "videos/trip") to preserve in the S3 object key
  *             example:
  *               fileName: report.pdf
  *               contentType: application/pdf
  *               fileSize: 25000000
+ *               folderPath: videos/trip
  *     responses:
  *       200:
  *         description: Multipart upload initiated

@@ -8,6 +8,7 @@ export const initiateUploadSchema = z.object({
     .int()
     .positive()
     .max(5 * 1024 * 1024 * 1024),
+  folderPath: z.string().optional(),
 });
 
 export const getUploadPartUrlSchema = z.object({

@@ -7,4 +7,8 @@ export const s3Client = new S3Client({
     accessKeyId: env.s3AccessKey,
     secretAccessKey: env.s3SecretKey,
   },
+  // Don't attach CRC32 checksums to presigned part URLs. The SDK computes
+  // the checksum over an empty payload when presigning, so S3 always
+  // rejects the real body bytes with a 400 checksum-mismatch.
+  // requestChecksumCalculation: 'WHEN_REQUIRED',
 });
