@@ -1,10 +1,43 @@
-# S3 Multipart Upload
+# S3 Multipart Upload — Production
 
 A full-stack **S3 multipart upload** project: an Express backend that brokers multipart uploads to S3, and a React frontend that uploads large video files with resume, pause, retry, and tab-close recovery.
 
 ## Screenshot
 
-![Video uploader](docs/image/uploader.png)
+Video uploader
+
+## The Full Flow (End to End)
+
+```
+┌────────┐         ┌─────────┐         ┌──────┐
+│ Client │────1───▶│ Backend │────2───▶│  S3  │
+└────────┘         └─────────┘         └──────┘
+    │                    │                 │
+    │  3. Presigned URLs │                 │
+    │◀───────────────────┘                 │
+    │                                       │
+    │────────── 4. PUT each part ──────────▶│
+    │                                       │
+    │  5. ETags returned per part           │
+    │◀──────────────────────────────────────┘
+    │                    │
+    │──── 6. Complete ──▶│────7. Complete───▶│
+    │                    │    Multipart      │
+    │◀── 8. Success ─────│◀──────────────────│
+```
+
+1. Client tells backend: "I want to upload `file.mp4`, 250MB"
+2. Backend calls `CreateMultipartUploadCommand` → gets an `UploadId`
+3. Backend generates a presigned URL per part (backend decides part size/count)
+4. Client uploads each part directly to S3 in parallel
+5. S3 returns an `ETag` per part — the client must collect these
+6. Client sends the list of `{ PartNumber, ETag }` back to the backend
+7. Backend calls `CompleteMultipartUploadCommand`
+8. Backend persists final object metadata, notifies client
+
+The backend never touches file bytes. It only orchestrates.
+
+---
 
 ## Features
 
@@ -46,15 +79,15 @@ pnpm dev                 # nodemon on http://localhost:3000
 
 Required env vars — see `backend/.env.example`:
 
-| Var | Purpose |
-|---|---|
-| `S3_REGION` | Bucket region (e.g. `ap-south-1`). |
-| `S3_BUCKET` | Bucket name. |
-| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | IAM credentials. |
-| `JWT_SECRET` | Long random string for signing tokens. |
-| `PORT` | Optional, defaults to `3000`. |
-| `CLIENT_URL` | Optional, defaults to `http://localhost:5173` (CORS). |
-| `DATABASE_URL` | Optional, only needed for Prisma. |
+| Var                               | Purpose                                               |
+| --------------------------------- | ----------------------------------------------------- |
+| `S3_REGION`                       | Bucket region (e.g. `ap-south-1`).                    |
+| `S3_BUCKET`                       | Bucket name.                                          |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | IAM credentials.                                      |
+| `JWT_SECRET`                      | Long random string for signing tokens.                |
+| `PORT`                            | Optional, defaults to `3000`.                         |
+| `CLIENT_URL`                      | Optional, defaults to `http://localhost:5173` (CORS). |
+| `DATABASE_URL`                    | Optional, only needed for Prisma.                     |
 
 Optional Prisma setup:
 
@@ -92,6 +125,39 @@ aws s3api put-bucket-cors --bucket YOUR_BUCKET --region YOUR_REGION \
 
 Without `ExposeHeaders: ["ETag"]` the browser cannot read the ETag returned by S3 after each part PUT, and completion fails.
 
+## The Full Flow (End to End)
+
+```
+┌────────┐         ┌─────────┐         ┌──────┐
+│ Client │────1───▶│ Backend │────2───▶│  S3  │
+└────────┘         └─────────┘         └──────┘
+    │                    │                 │
+    │  3. Presigned URLs │                 │
+    │◀───────────────────┘                 │
+    │                                       │
+    │────────── 4. PUT each part ──────────▶│
+    │                                       │
+    │  5. ETags returned per part           │
+    │◀──────────────────────────────────────┘
+    │                    │
+    │──── 6. Complete ──▶│────7. Complete───▶│
+    │                    │    Multipart      │
+    │◀── 8. Success ─────│◀──────────────────│
+```
+
+1. Client tells backend: "I want to upload `file.mp4`, 250MB"
+2. Backend calls `CreateMultipartUploadCommand` → gets an `UploadId`
+3. Backend generates a presigned URL per part (backend decides part size/count)
+4. Client uploads each part directly to S3 in parallel
+5. S3 returns an `ETag` per part — the client must collect these
+6. Client sends the list of `{ PartNumber, ETag }` back to the backend
+7. Backend calls `CompleteMultipartUploadCommand`
+8. Backend persists final object metadata, notifies client
+
+The backend never touches file bytes. It only orchestrates.
+
+---
+
 ## How it works
 
 1. The frontend calls `POST /api/v1/upload/initiate-upload` with the file name, size, MIME type, and optional folder path. The backend creates the S3 multipart upload and returns a `documentId`, S3 `uploadId`, object `key`, `partSize`, and `totalParts`.
@@ -104,21 +170,21 @@ Without `ExposeHeaders: ["ETag"]` the browser cannot read the ETag returned by S
 
 Base URL: `http://localhost:3000/api/v1`. All responses are `{ success, data }`.
 
-| Method | Path | Auth | Notes |
-|---|---|---|---|
-| `GET` | `/health` | none | Liveness probe. |
-| `GET` | `/ready` | none | Readiness probe (checks DB if configured). |
-| `GET` | `/docs` | none | Scalar UI for the live OpenAPI spec. |
-| `GET` | `/openapi.json` | none | Raw OpenAPI 3.1 spec. |
-| `POST` | `/users/register` | none | Create a user. |
-| `POST` | `/users/login` | none | Returns a JWT. |
-| `GET` | `/users/me` | Bearer | Current user profile. |
-| `GET` | `/users` | Bearer + admin | List all users. |
-| `POST` | `/upload/initiate-upload` | none | Start a multipart upload. |
-| `POST` | `/upload/:documentId/parts` | none | Presigned PUT URL for one part. |
-| `POST` | `/upload/:documentId/parts/batch` | none | Presigned PUT URLs for all parts. |
-| `POST` | `/upload/:documentId/complete` | none | Complete the upload (send part numbers + ETags). |
-| `POST` | `/upload/:documentId/abort` | none | Abort the upload. |
+| Method | Path                              | Auth           | Notes                                            |
+| ------ | --------------------------------- | -------------- | ------------------------------------------------ |
+| `GET`  | `/health`                         | none           | Liveness probe.                                  |
+| `GET`  | `/ready`                          | none           | Readiness probe (checks DB if configured).       |
+| `GET`  | `/docs`                           | none           | Scalar UI for the live OpenAPI spec.             |
+| `GET`  | `/openapi.json`                   | none           | Raw OpenAPI 3.1 spec.                            |
+| `POST` | `/users/register`                 | none           | Create a user.                                   |
+| `POST` | `/users/login`                    | none           | Returns a JWT.                                   |
+| `GET`  | `/users/me`                       | Bearer         | Current user profile.                            |
+| `GET`  | `/users`                          | Bearer + admin | List all users.                                  |
+| `POST` | `/upload/initiate-upload`         | none           | Start a multipart upload.                        |
+| `POST` | `/upload/:documentId/parts`       | none           | Presigned PUT URL for one part.                  |
+| `POST` | `/upload/:documentId/parts/batch` | none           | Presigned PUT URLs for all parts.                |
+| `POST` | `/upload/:documentId/complete`    | none           | Complete the upload (send part numbers + ETags). |
+| `POST` | `/upload/:documentId/abort`       | none           | Abort the upload.                                |
 
 ### Example
 
@@ -188,14 +254,14 @@ Notable details:
 
 ## Development commands
 
-| Action | Command | Where |
-|---|---|---|
-| Backend dev server | `pnpm dev` | `backend/` |
-| Frontend dev server | `pnpm dev` | `frontend/` |
-| Frontend typecheck | `pnpm exec tsc -b` | `frontend/` |
-| Frontend lint | `pnpm exec oxlint` | `frontend/` |
-| Frontend build | `pnpm build` | `frontend/` |
-| API docs | `open http://localhost:3000/api/v1/docs` | while backend runs |
+| Action              | Command                                  | Where              |
+| ------------------- | ---------------------------------------- | ------------------ |
+| Backend dev server  | `pnpm dev`                               | `backend/`         |
+| Frontend dev server | `pnpm dev`                               | `frontend/`        |
+| Frontend typecheck  | `pnpm exec tsc -b`                       | `frontend/`        |
+| Frontend lint       | `pnpm exec oxlint`                       | `frontend/`        |
+| Frontend build      | `pnpm build`                             | `frontend/`        |
+| API docs            | `open http://localhost:3000/api/v1/docs` | while backend runs |
 
 ## License
 
