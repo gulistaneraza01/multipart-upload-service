@@ -1,9 +1,11 @@
 import app from './app.js';
 import { env } from './config/env.js';
+import { startUploadReconciler } from './jobs/reconcileUploads.js';
 import { logger } from './utils/logger.js';
 
 const server = app.listen(env.port, () => {
   logger.info(`Server running in ${env.nodeEnv} mode on port ${env.port}`);
+  startUploadReconciler();
 });
 
 // Graceful shutdown
