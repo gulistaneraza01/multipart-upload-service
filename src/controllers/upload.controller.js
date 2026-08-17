@@ -1,4 +1,5 @@
 import {
+  completeUpload,
   createInitialUploadId,
   getPresignedUploadPartUrl,
   getPresignedUploadPartUrls,
@@ -37,5 +38,15 @@ export const getUploadPartUrls = async (req, res) => {
     event: 'part_upload_urls_generated',
     documentId,
   });
+  res.status(200).json({ success: true, data });
+};
+
+export const completeUploadController = async (req, res) => {
+  const { documentId } = req.params;
+  const { parts } = req.body;
+
+  const data = await completeUpload(documentId, parts);
+
+  logger.info({ event: 'multipart_upload_completed', documentId });
   res.status(200).json({ success: true, data });
 };

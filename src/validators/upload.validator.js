@@ -13,3 +13,14 @@ export const initiateUploadSchema = z.object({
 export const getUploadPartUrlSchema = z.object({
   partNumber: z.number().int().positive(),
 });
+
+export const completeUploadSchema = z.object({
+  parts: z
+    .array(
+      z.object({
+        partNumber: z.number().int().positive().max(10000),
+        etag: z.string(),
+      }),
+    )
+    .min(1),
+});

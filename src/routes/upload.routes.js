@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import {
+  completeUploadController,
   getUploadPartUrl,
   getUploadPartUrls,
   initiateUpload,
@@ -7,6 +8,7 @@ import {
 import { validate } from '../middleware/validate.middleware.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import {
+  completeUploadSchema,
   getUploadPartUrlSchema,
   initiateUploadSchema,
 } from '../validators/upload.validator.js';
@@ -238,6 +240,98 @@ router.post(
 router.post(
   '/:documentId/parts/batch',
   asyncHandler(getUploadPartUrls),
+);
+
+/**
+ * @openapi
+ * /upload/{documentId}/complete:
+ *   post:
+ *     summary: Complete a multipart upload
+ *     description: Finalizes a multipart upload by passing every uploaded part's number and ETag (returned by S3 after each part PUT). On success the object becomes available under the same key.
+ *     tags: [Upload]
+ *     parameters:
+ *       - in: path
+ *         name: documentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Document record ID returned by /upload/initiate-upload
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [parts]
+ *             properties:
+ *               parts:
+ *                 type: array
+ *                 minItems: 1
+ *                 items:
+ *                   type: object
+ *                   required: [partNumber, etag]
+ *                   properties:
+ *                     partNumber:
+ *                       type: integer
+ *                       minimum: 1
+ *                       description: 1-based part index
+ *                     etag:
+ *                       type: string
+ *                       description: ETag header value returned by S3 when the part was uploaded
+ *             example:
+ *               parts:
+ *                 - partNumber: 1
+ *                   etag: '"e5486e8d68b5a5f8e5f6f0a2b4c1d2e3"'
+ *                 - partNumber: 2
+ *                   etag: '"a97d4e57f1c17a6d2e4a5f8b9c0d1e2f"'
+ *                 - partNumber: 3
+ *                   etag: '"1b2c3d4e5f60718293a4b5c6d7e8f9a0"'
+ *     responses:
+ *       200:
+ *         description: Multipart upload completed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [success, data]
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   required: [documentId, uploadId, key, location, etag]
+ *                   properties:
+ *                     documentId:
+ *                       type: string
+ *                     uploadId:
+ *                       type: string
+ *                     key:
+ *                       type: string
+ *                       description: S3 object key of the assembled object
+ *                     location:
+ *                       type: string
+ *                       description: Full URL of the completed object
+ *                     etag:
+ *                       type: string
+ *                       description: ETag of the assembled object
+ *             example:
+ *               success: true
+ *               data:
+ *                 documentId: 0c8f5f74-3a1e-4b2c-9d4d-2f0a6b3c1e2e
+ *                 uploadId: 2KpqtbQgzTnxmJYZxRCp6F7PuFqQ2lQl
+ *                 key: 0c8f5f74-3a1e-4b2c-9d4d-2f0a6b3c1e2e-report.pdf
+ *                 location: https://bucket.s3.amazonaws.com/0c8f5f74-3a1e-4b2c-9d4d-2f0a6b3c1e2e-report.pdf
+ *                 etag: '"5f6a7b8c9d0e1f2031425364758697a8"'
+ *       400:
+ *         description: Validation error
+ *       404:
+ *         description: Upload not found
+ */
+router.post(
+  '/:documentId/complete',
+  validate(completeUploadSchema),
+  asyncHandler(completeUploadController),
 );
 
 // router.post('/');

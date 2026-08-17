@@ -1,4 +1,5 @@
 import {
+  CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
   UploadPartCommand,
 } from '@aws-sdk/client-s3';
@@ -103,5 +104,75 @@ export const getPresignedUploadPartUrls = async (documentId) => {
     partSize: doc.partSize,
     totalPart: doc.totalPart,
     parts,
+  };
+};
+
+export const completeUpload = async (documentId, parts) => {
+  const doc = await prisma.documentStore.findUnique({
+    where: { id: documentId },
+  });
+
+  if (!doc) {
+    throw new AppError('Upload not found', 404);
+  }
+
+  const partNumbers = parts.map((p) => p.partNumber);
+  const unique = new Set(partNumbers);
+
+  if (unique.size !== partNumbers.length) {
+    const duplicates = partNumbers.filter(
+      (n, i) => partNumbers.indexOf(n) !== i,
+    );
+    throw new AppError(
+      `Duplicate part number(s): ${[...new Set(duplicates)].join(', ')}`,
+      400,
+    );
+  }
+
+  if (doc.totalPart > 0) {
+    const sorted = [...unique].sort((a, b) => a - b);
+    const expected = Array.from({ length: doc.totalPart }, (_, i) => i + 1);
+
+    const outOfRange = sorted.filter((n) => n > doc.totalPart);
+    const missing = expected.filter((n) => !unique.has(n));
+
+    if (partNumbers.length !== doc.totalPart || outOfRange.length > 0) {
+      throw new AppError(
+        `Parts must cover every part number 1-${doc.totalPart} exactly once.` +
+          `${missing.length > 0 ? ` Missing: ${missing.join(', ')}.` : ''}` +
+          `${outOfRange.length > 0 ? ` Out of range: ${outOfRange.join(', ')}.` : ''}` +
+          ` Expected ${doc.totalPart} parts, received ${partNumbers.length}.`,
+        400,
+      );
+    }
+  }
+
+  const sortedParts = [...parts].sort((a, b) => a.partNumber - b.partNumber);
+
+  const command = new CompleteMultipartUploadCommand({
+    Bucket: env.s3Bucket,
+    Key: doc.key,
+    UploadId: doc.uploadId,
+    MultipartUpload: {
+      Parts: sortedParts.map(({ partNumber, etag }) => ({
+        PartNumber: partNumber,
+        ETag: etag,
+      })),
+    },
+  });
+
+  const result = await s3Client.send(command);
+
+  await prisma.documentStore.update({
+    where: { id: documentId },
+    data: { status: 'COMPLETE' },
+  });
+
+  return {
+    documentId,
+    uploadId: doc.uploadId,
+    key: result.Key ?? doc.key,
+    location: result.Location,
+    etag: result.ETag,
   };
 };
