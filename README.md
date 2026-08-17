@@ -4,7 +4,7 @@ A full-stack **S3 multipart upload** project: an Express backend that brokers mu
 
 ## Screenshot
 
-Video uploader
+![Video uploader](docs/image/uploader.png)
 
 ## The Full Flow (End to End)
 
