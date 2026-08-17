@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
 import { initiateUpload } from '@/lib/upload/api';
 import { UploadEngine } from '@/lib/upload/engine';
 import { loadSessions, removeSession, saveSession } from '@/lib/upload/storage';
 import type { PickItem, UploadSession } from '@/lib/upload/types';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 
 const MAX_CONCURRENT_FILES = 2;
 
@@ -38,7 +39,9 @@ function initialSession(
 }
 
 export function useUploadManager() {
-  const [sessions, setSessions] = useState<UploadSession[]>(() => loadSessions());
+  const [sessions, setSessions] = useState<UploadSession[]>(() =>
+    loadSessions(),
+  );
   const [live, setLive] = useState<Record<string, LiveState>>({});
   const [engineIds, setEngineIds] = useState<string[]>([]);
 
@@ -57,18 +60,21 @@ export function useUploadManager() {
     };
   }, []);
 
-  const patchSession = useCallback((session: UploadSession, liveState?: LiveState) => {
-    saveSession(session);
-    if (!mountedRef.current) return;
-    setSessions((prev) =>
-      prev.some((s) => s.documentId === session.documentId)
-        ? prev.map((s) => (s.documentId === session.documentId ? session : s))
-        : [...prev, session],
-    );
-    if (liveState) {
-      setLive((prev) => ({ ...prev, [session.documentId]: liveState }));
-    }
-  }, []);
+  const patchSession = useCallback(
+    (session: UploadSession, liveState?: LiveState) => {
+      saveSession(session);
+      if (!mountedRef.current) return;
+      setSessions((prev) =>
+        prev.some((s) => s.documentId === session.documentId)
+          ? prev.map((s) => (s.documentId === session.documentId ? session : s))
+          : [...prev, session],
+      );
+      if (liveState) {
+        setLive((prev) => ({ ...prev, [session.documentId]: liveState }));
+      }
+    },
+    [],
+  );
 
   const makeEngine = useCallback(
     (session: UploadSession, file: File): UploadEngine => {
@@ -78,13 +84,19 @@ export function useUploadManager() {
             running: engine.isRunning,
             paused: engine.isPaused,
           }),
-        onComplete: (next) =>
-          patchSession(next, { running: false, paused: false }),
+        onComplete: (next) => {
+          patchSession(next, { running: false, paused: false });
+          toast.success(`${next.fileName} uploaded`, {
+            description: `Object ready at ${next.result?.location}`,
+          });
+        },
       });
       enginesRef.current.set(session.documentId, engine);
       if (mountedRef.current) {
         setEngineIds((prev) =>
-          prev.includes(session.documentId) ? prev : [...prev, session.documentId],
+          prev.includes(session.documentId)
+            ? prev
+            : [...prev, session.documentId],
         );
       }
       return engine;
@@ -113,11 +125,17 @@ export function useUploadManager() {
               : [...prev, session],
           );
         }
+        toast.success(`${item.file.name} started`, {
+          description: `Key ${init.key}`,
+        });
 
         const engine = makeEngine(session, item.file);
         await engine.start();
       } catch (err) {
         console.error('Upload failed to start:', err);
+        toast.error(`Failed to start ${item.file.name}`, {
+          description: err instanceof Error ? err.message : String(err),
+        });
       } finally {
         activeRef.current -= 1;
         drainRef.current();
@@ -156,22 +174,22 @@ export function useUploadManager() {
     enginesRef.current.get(documentId)?.retryFailed();
   }, []);
 
-  const abortUpload = useCallback(
-    (documentId: string) => {
-      const engine = enginesRef.current.get(documentId);
-      if (!engine) return;
-      void (async () => {
-        await engine.abort();
-        removeSession(documentId);
-        enginesRef.current.delete(documentId);
-        if (mountedRef.current) {
-          setSessions((prev) => prev.filter((s) => s.documentId !== documentId));
-          setEngineIds((prev) => prev.filter((id) => id !== documentId));
-        }
-      })();
-    },
-    [],
-  );
+  const abortUpload = useCallback((documentId: string) => {
+    const engine = enginesRef.current.get(documentId);
+    if (!engine) return;
+    void (async () => {
+      await engine.abort();
+      removeSession(documentId);
+      enginesRef.current.delete(documentId);
+      if (mountedRef.current) {
+        setSessions((prev) => prev.filter((s) => s.documentId !== documentId));
+        setEngineIds((prev) => prev.filter((id) => id !== documentId));
+      }
+      toast.info('Upload aborted', {
+        description: engine.session.fileName,
+      });
+    })();
+  }, []);
 
   const clearSession = useCallback((documentId: string) => {
     removeSession(documentId);
@@ -184,13 +202,22 @@ export function useUploadManager() {
 
   const resumeSessionWithFile = useCallback(
     (documentId: string, file: File) => {
-      const session = sessionsRef.current.find((s) => s.documentId === documentId);
+      const session = sessionsRef.current.find(
+        (s) => s.documentId === documentId,
+      );
       if (!session) return;
 
-      const resuming = { ...session, status: 'uploading' as const, result: undefined };
+      const resuming = {
+        ...session,
+        status: 'uploading' as const,
+        result: undefined,
+      };
       patchSession(resuming, { running: true, paused: false });
       const engine = makeEngine(resuming, file);
       void engine.start();
+      toast.info(`Resuming ${file.name}`, {
+        description: `Uploading ${resuming.totalParts} parts`,
+      });
     },
     [makeEngine, patchSession],
   );
