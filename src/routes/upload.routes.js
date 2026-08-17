@@ -1,8 +1,15 @@
 import { Router } from 'express';
-import { initiateUpload } from '../controllers/upload.controller.js';
+import {
+  getUploadPartUrl,
+  getUploadPartUrls,
+  initiateUpload,
+} from '../controllers/upload.controller.js';
 import { validate } from '../middleware/validate.middleware.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { initiateUploadSchema } from '../validators/upload.validator.js';
+import {
+  getUploadPartUrlSchema,
+  initiateUploadSchema,
+} from '../validators/upload.validator.js';
 
 const router = Router();
 
@@ -49,8 +56,11 @@ const router = Router();
  *                   example: true
  *                 data:
  *                   type: object
- *                   required: [uploadId, key, partSize, totalParts]
+ *                   required: [documentId, uploadId, key, partSize, totalParts]
  *                   properties:
+ *                     documentId:
+ *                       type: string
+ *                       description: ID of the document record. Use this (not uploadId) when requesting part URLs.
  *                     uploadId:
  *                       type: string
  *                       description: ID of the multipart upload for subsequent part uploads
@@ -68,6 +78,7 @@ const router = Router();
  *             example:
  *               success: true
  *               data:
+ *                 documentId: 0c8f5f74-3a1e-4b2c-9d4d-2f0a6b3c1e2e
  *                 uploadId: 2KpqtbQgzTnxmJYZxRCp6F7PuFqQ2lQl
  *                 key: 0c8f5f74-3a1e-4b2c-9d4d-2f0a6b3c1e2e-report.pdf
  *                 partSize: 10485760
@@ -79,6 +90,154 @@ router.post(
   '/initiate-upload',
   validate(initiateUploadSchema),
   asyncHandler(initiateUpload),
+);
+
+/**
+ * @openapi
+ * /upload/{documentId}/parts:
+ *   post:
+ *     summary: Get a presigned URL to upload a part
+ *     description: Returns a presigned PUT URL for a single part of a multipart upload. The caller PUTs the raw part bytes to this URL, then uses the returned ETag when completing the upload.
+ *     tags: [Upload]
+ *     parameters:
+ *       - in: path
+ *         name: documentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Document record ID returned by /upload/initiate-upload
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [partNumber]
+ *             properties:
+ *               partNumber:
+ *                 type: integer
+ *                 minimum: 1
+ *                 description: 1-based index of the part to upload
+ *             example:
+ *               partNumber: 1
+ *     responses:
+ *       200:
+ *         description: Presigned URL ready
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [success, data]
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   required: [documentId, partNumber, url]
+ *                   properties:
+ *                     documentId:
+ *                       type: string
+ *                     partNumber:
+ *                       type: integer
+ *                     url:
+ *                       type: string
+ *                       description: Presigned PUT URL. Send the raw part bytes as the request body.
+ *             example:
+ *               success: true
+ *               data:
+ *                 documentId: 0c8f5f74-3a1e-4b2c-9d4d-2f0a6b3c1e2e
+ *                 partNumber: 1
+ *                 url: https://bucket.s3.amazonaws.com/uuid-report.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&partNumber=1&uploadId=...
+ *       400:
+ *         description: Validation error
+ *       404:
+ *         description: Upload not found
+ */
+router.post(
+  '/:documentId/parts',
+  validate(getUploadPartUrlSchema),
+  asyncHandler(getUploadPartUrl),
+);
+
+/**
+ * @openapi
+ * /upload/{documentId}/parts/batch:
+ *   post:
+ *     summary: Get presigned URLs for all parts in a single call
+ *     description: Returns presigned PUT URLs for every part of a multipart upload in one response. Prefer this over requesting parts one-by-one to reduce round trips. Each URL expires in 15 minutes.
+ *     tags: [Upload]
+ *     parameters:
+ *       - in: path
+ *         name: documentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Document record ID returned by /upload/initiate-upload
+ *     responses:
+ *       200:
+ *         description: Presigned URLs ready
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [success, data]
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   required: [documentId, uploadId, key, partSize, totalPart, parts]
+ *                   properties:
+ *                     documentId:
+ *                       type: string
+ *                     uploadId:
+ *                       type: string
+ *                     key:
+ *                       type: string
+ *                     partSize:
+ *                       type: integer
+ *                       description: Chunk size in bytes used for part uploads
+ *                       example: 10485760
+ *                     totalPart:
+ *                       type: integer
+ *                       description: Number of parts the file was split into
+ *                       example: 3
+ *                     parts:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         required: [partNumber, url]
+ *                         properties:
+ *                           partNumber:
+ *                             type: integer
+ *                           url:
+ *                             type: string
+ *                             description: Presigned PUT URL. Send the raw part bytes as the request body.
+ *             example:
+ *               success: true
+ *               data:
+ *                 documentId: 0c8f5f74-3a1e-4b2c-9d4d-2f0a6b3c1e2e
+ *                 uploadId: 2KpqtbQgzTnxmJYZxRCp6F7PuFqQ2lQl
+ *                 key: 0c8f5f74-3a1e-4b2c-9d4d-2f0a6b3c1e2e-report.pdf
+ *                 partSize: 10485760
+ *                 totalPart: 3
+ *                 parts:
+ *                   - partNumber: 1
+ *                     url: https://bucket.s3.amazonaws.com/uuid-report.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&partNumber=1&uploadId=...
+ *                   - partNumber: 2
+ *                     url: https://bucket.s3.amazonaws.com/uuid-report.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&partNumber=2&uploadId=...
+ *                   - partNumber: 3
+ *                     url: https://bucket.s3.amazonaws.com/uuid-report.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&partNumber=3&uploadId=...
+ *       400:
+ *         description: Validation error
+ *       404:
+ *         description: Upload not found
+ */
+router.post(
+  '/:documentId/parts/batch',
+  asyncHandler(getUploadPartUrls),
 );
 
 // router.post('/');

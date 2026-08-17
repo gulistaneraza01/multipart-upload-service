@@ -9,3 +9,7 @@ export const initiateUploadSchema = z.object({
     .positive()
     .max(5 * 1024 * 1024 * 1024),
 });
+
+export const getUploadPartUrlSchema = z.object({
+  partNumber: z.number().int().positive(),
+});

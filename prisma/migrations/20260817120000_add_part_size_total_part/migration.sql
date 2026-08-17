@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "DocumentStore" ADD COLUMN "partSize" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "DocumentStore" ADD COLUMN "totalPart" INTEGER NOT NULL DEFAULT 0;

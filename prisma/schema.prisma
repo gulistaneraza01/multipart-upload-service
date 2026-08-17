@@ -27,6 +27,8 @@ model DocumentStore {
   userId    String
   key       String
   status    UploadStatus @default(PENDING)
+  partSize  Int
+  totalPart Int
   expiresAt DateTime
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
