@@ -4,7 +4,7 @@ A full-stack **S3 multipart upload** project: an Express backend that brokers mu
 
 ## Screenshot
 
-![Video uploader](docs/image/Screenshot%202026-08-18%20at%2012.13.52%20AM.png)
+![Video uploader](docs/image/uploader.png)
 
 ## Features
 
