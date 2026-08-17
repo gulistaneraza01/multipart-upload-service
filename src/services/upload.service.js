@@ -1,4 +1,5 @@
 import {
+  AbortMultipartUploadCommand,
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
   UploadPartCommand,
@@ -175,4 +176,29 @@ export const completeUpload = async (documentId, parts) => {
     location: result.Location,
     etag: result.ETag,
   };
+};
+
+export const abortUpload = async (documentId) => {
+  const doc = await prisma.documentStore.findUnique({
+    where: { id: documentId },
+  });
+
+  if (!doc) {
+    throw new AppError('Upload not found', 404);
+  }
+
+  const command = new AbortMultipartUploadCommand({
+    Bucket: env.s3Bucket,
+    Key: doc.key,
+    UploadId: doc.uploadId,
+  });
+
+  await s3Client.send(command);
+
+  await prisma.documentStore.update({
+    where: { id: documentId },
+    data: { status: 'ABORT' },
+  });
+
+  return { documentId, uploadId: doc.uploadId, key: doc.key };
 };

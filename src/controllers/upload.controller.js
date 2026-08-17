@@ -1,4 +1,5 @@
 import {
+  abortUpload,
   completeUpload,
   createInitialUploadId,
   getPresignedUploadPartUrl,
@@ -48,5 +49,14 @@ export const completeUploadController = async (req, res) => {
   const data = await completeUpload(documentId, parts);
 
   logger.info({ event: 'multipart_upload_completed', documentId });
+  res.status(200).json({ success: true, data });
+};
+
+export const abortUploadController = async (req, res) => {
+  const { documentId } = req.params;
+
+  const data = await abortUpload(documentId);
+
+  logger.info({ event: 'multipart_upload_aborted', documentId });
   res.status(200).json({ success: true, data });
 };

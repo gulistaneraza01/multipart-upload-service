@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import {
+  abortUploadController,
   completeUploadController,
   getUploadPartUrl,
   getUploadPartUrls,
@@ -332,6 +333,59 @@ router.post(
   '/:documentId/complete',
   validate(completeUploadSchema),
   asyncHandler(completeUploadController),
+);
+
+/**
+ * @openapi
+ * /upload/{documentId}/abort:
+ *   post:
+ *     summary: Abort a multipart upload
+ *     description: Cancels an in-progress multipart upload. Any uploaded parts and resources are freed by S3, and the document record is marked ABORT.
+ *     tags: [Upload]
+ *     parameters:
+ *       - in: path
+ *         name: documentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Document record ID returned by /upload/initiate-upload
+ *     responses:
+ *       200:
+ *         description: Multipart upload aborted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [success, data]
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   required: [documentId, uploadId, key]
+ *                   properties:
+ *                     documentId:
+ *                       type: string
+ *                     uploadId:
+ *                       type: string
+ *                     key:
+ *                       type: string
+ *                       description: S3 object key of the aborted upload
+ *             example:
+ *               success: true
+ *               data:
+ *                 documentId: 0c8f5f74-3a1e-4b2c-9d4d-2f0a6b3c1e2e
+ *                 uploadId: 2KpqtbQgzTnxmJYZxRCp6F7PuFqQ2lQl
+ *                 key: 0c8f5f74-3a1e-4b2c-9d4d-2f0a6b3c1e2e-report.pdf
+ *       400:
+ *         description: Validation error
+ *       404:
+ *         description: Upload not found
+ */
+router.post(
+  '/:documentId/abort',
+  asyncHandler(abortUploadController),
 );
 
 // router.post('/');
